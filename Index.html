@@ -1,0 +1,1361 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ControlHH - Registro de Vehículos y Horas-Hombre</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f7ff',
+                            100: '#e0effe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#0f172a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js para Gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- html2pdf.js para Exportación PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        /* Estilos personalizados para animaciones y scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+        .glass-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.05); opacity: 0.4; }
+            100% { transform: scale(0.95); opacity: 0.8; }
+        }
+        .timer-active {
+            animation: pulse-ring 2s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased flex flex-col">
+
+    <!-- Toast Notification Box -->
+    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Header / Navbar -->
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="bg-gradient-to-tr from-blue-600 to-indigo-500 p-2.5 rounded-xl text-white shadow-lg shadow-blue-500/30">
+                    <i class="fa-solid fa-truck-monster text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-none tracking-tight text-white">AutoTracker <span class="text-blue-400 font-mono text-xs px-2 py-0.5 rounded bg-blue-950/80 border border-blue-800/50">HH Pro</span></h1>
+                    <p class="text-xs text-slate-400">Control Exacto de Vehículos & Horas-Hombre</p>
+                </div>
+            </div>
+
+            <!-- Global Controls & Month Picker -->
+            <div class="flex items-center gap-3">
+                <div class="flex items-center bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-1.5 shadow-inner">
+                    <i class="fa-regular fa-calendar-days text-slate-400 mr-2 text-sm"></i>
+                    <label for="monthFilter" class="sr-only">Seleccionar Mes</label>
+                    <input type="month" id="monthFilter" class="bg-transparent text-xs font-semibold text-white focus:outline-none cursor-pointer" onchange="app.setMonthFilter(this.value)">
+                </div>
+                
+                <button onclick="app.openVehicleModal()" class="hidden sm:flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-medium px-3.5 py-2 rounded-xl transition shadow-md shadow-blue-600/20 active:scale-95">
+                    <i class="fa-solid fa-plus text-xs"></i>
+                    <span>Nuevo Vehículo</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Layout -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- Banner Cronómetro en Vivo & KPI Cards Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Cronómetro Interactivo en Tiempo Real -->
+            <div class="glass-card rounded-2xl p-6 relative overflow-hidden flex flex-col justify-between border-l-4 border-l-blue-500 shadow-xl">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-2">
+                        <span class="relative flex h-3 w-3">
+                            <span id="timerPulse" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 hidden"></span>
+                            <span id="timerDot" class="relative inline-flex rounded-full h-3 w-3 bg-slate-500"></span>
+                        </span>
+                        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400">Cronómetro en Vivo</h2>
+                    </div>
+                    <span id="timerStatusBadge" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">INACTIVO</span>
+                </div>
+
+                <!-- Display Digital de Tiempo -->
+                <div class="text-center py-2">
+                    <div id="timerDisplay" class="font-mono text-4xl sm:text-5xl font-black tracking-tight text-white drop-shadow-md">
+                        00:00:00
+                    </div>
+                    <p id="timerSubtext" class="text-xs text-slate-400 mt-1 truncate">Sin actividad en curso</p>
+                </div>
+
+                <!-- Formulario de Inicio / Controles de Temporizador -->
+                <div class="mt-4 space-y-3">
+                    <div id="timerControlsSetup" class="space-y-2">
+                        <select id="timerVehicleSelect" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+                            <option value="">-- Seleccionar Vehículo --</option>
+                        </select>
+                        <select id="timerActivitySelect" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+                            <option value="Mantenimiento Preventivo">Mantenimiento Preventivo</option>
+                            <option value="Reparación Mecánica">Reparación Mecánica</option>
+                            <option value="Diagnóstico Eléctrico">Diagnóstico Eléctrico</option>
+                            <option value="Servicio de Pintura/Desabolladura">Servicio de Pintura/Desabolladura</option>
+                            <option value="Inspección Técnica">Inspección Técnica</option>
+                            <option value="Lavado y Detalle">Lavado y Detalle</option>
+                            <option value="Otro">Otro Trabajo</option>
+                        </select>
+                        <input type="text" id="timerNotesInput" placeholder="Descripción breve de la tarea..." class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <button id="btnStartTimer" onclick="app.startTimer()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5 px-3 rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30">
+                            <i class="fa-solid fa-play"></i> Iniciar Tarea
+                        </button>
+                        <button id="btnPauseTimer" onclick="app.pauseTimer()" class="hidden flex-1 bg-amber-600 hover:bg-amber-500 text-white font-medium py-2.5 px-3 rounded-xl text-xs transition items-center justify-center gap-2 shadow-lg shadow-amber-900/30">
+                            <i class="fa-solid fa-pause"></i> Pausar
+                        </button>
+                        <button id="btnStopTimer" onclick="app.stopTimer()" class="hidden bg-rose-600 hover:bg-rose-500 text-white font-medium py-2.5 px-3 rounded-xl text-xs transition items-center justify-center gap-2 shadow-lg shadow-rose-900/30">
+                            <i class="fa-solid fa-square"></i> Finalizar & Guardar
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard KPIs tarjetas de métricas -->
+            <div class="lg:col-span-2 grid grid-cols-2 sm:grid-cols-2 gap-4">
+                
+                <!-- KPI 1: Total HH Mes -->
+                <div class="glass-card rounded-2xl p-5 flex flex-col justify-between border-t-2 border-t-blue-500">
+                    <div class="flex items-center justify-between text-slate-400">
+                        <span class="text-xs font-bold uppercase tracking-wider">Total HH Mes</span>
+                        <div class="p-2 rounded-lg bg-blue-500/10 text-blue-400">
+                            <i class="fa-solid fa-clock"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <div id="kpiTotalHH" class="text-2xl sm:text-3xl font-extrabold text-white font-mono">00:00:00</div>
+                        <p id="kpiTotalHoursDecimal" class="text-xs text-blue-400 font-medium mt-1">0.00 horas decimales</p>
+                    </div>
+                    <div class="mt-2 text-[11px] text-slate-500 flex items-center gap-1">
+                        <i class="fa-solid fa-circle-info"></i>
+                        <span>Horas registradas este mes</span>
+                    </div>
+                </div>
+
+                <!-- KPI 2: Vehículos Atendidos -->
+                <div class="glass-card rounded-2xl p-5 flex flex-col justify-between border-t-2 border-t-indigo-500">
+                    <div class="flex items-center justify-between text-slate-400">
+                        <span class="text-xs font-bold uppercase tracking-wider">Vehículos Activos</span>
+                        <div class="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
+                            <i class="fa-solid fa-car"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <div id="kpiVehiclesCount" class="text-2xl sm:text-3xl font-extrabold text-white">0</div>
+                        <p class="text-xs text-indigo-400 font-medium mt-1">En flota registrada</p>
+                    </div>
+                    <div class="mt-2 text-[11px] text-slate-500 flex items-center gap-1">
+                        <i class="fa-solid fa-car-side"></i>
+                        <span>Vehículos en sistema</span>
+                    </div>
+                </div>
+
+                <!-- KPI 3: Registros del Mes -->
+                <div class="glass-card rounded-2xl p-5 flex flex-col justify-between border-t-2 border-t-emerald-500">
+                    <div class="flex items-center justify-between text-slate-400">
+                        <span class="text-xs font-bold uppercase tracking-wider">Sesiones de Trabajo</span>
+                        <div class="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
+                            <i class="fa-solid fa-list-check"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <div id="kpiEntriesCount" class="text-2xl sm:text-3xl font-extrabold text-white">0</div>
+                        <p class="text-xs text-emerald-400 font-medium mt-1">Trabajos finalizados</p>
+                    </div>
+                    <div class="mt-2 text-[11px] text-slate-500 flex items-center gap-1">
+                        <i class="fa-solid fa-bolt"></i>
+                        <span>Entradas contabilizadas</span>
+                    </div>
+                </div>
+
+                <!-- KPI 4: Promedio HH / Vehículo -->
+                <div class="glass-card rounded-2xl p-5 flex flex-col justify-between border-t-2 border-t-amber-500">
+                    <div class="flex items-center justify-between text-slate-400">
+                        <span class="text-xs font-bold uppercase tracking-wider">Promedio HH / Veh.</span>
+                        <div class="p-2 rounded-lg bg-amber-500/10 text-amber-400">
+                            <i class="fa-solid fa-chart-line"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <div id="kpiAvgHH" class="text-2xl sm:text-3xl font-extrabold text-white font-mono">00:00:00</div>
+                        <p class="text-xs text-amber-400 font-medium mt-1">Rendimiento por unidad</p>
+                    </div>
+                    <div class="mt-2 text-[11px] text-slate-500 flex items-center gap-1">
+                        <i class="fa-solid fa-calculator"></i>
+                        <span>Promedio en el período</span>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Section Tabs & Export Buttons -->
+        <div class="flex flex-col sm:flex-row items-center justify-between border-b border-slate-800 pb-3 gap-3">
+            <nav class="flex space-x-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0" aria-label="Tabs">
+                <button onclick="app.switchTab('analytics')" id="tab-analytics" class="px-4 py-2 text-xs font-semibold rounded-xl bg-blue-600 text-white transition shadow-md shadow-blue-900/30">
+                    <i class="fa-solid fa-chart-pie mr-2"></i>Gráficos & Métricas
+                </button>
+                <button onclick="app.switchTab('logs')" id="tab-logs" class="px-4 py-2 text-xs font-semibold rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition">
+                    <i class="fa-solid fa-table-list mr-2"></i>Historial de HH
+                </button>
+                <button onclick="app.switchTab('vehicles')" id="tab-vehicles" class="px-4 py-2 text-xs font-semibold rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition">
+                    <i class="fa-solid fa-car-side mr-2"></i>Flota Vehicular
+                </button>
+            </nav>
+
+            <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button onclick="app.openManualEntryModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium px-3 py-2 rounded-xl transition flex items-center gap-2">
+                    <i class="fa-solid fa-pen-to-square text-blue-400"></i> Registro Manual HH
+                </button>
+                <button onclick="app.generatePDFReport()" class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-semibold px-3.5 py-2 rounded-xl transition flex items-center gap-2 shadow-md shadow-emerald-900/20">
+                    <i class="fa-solid fa-file-pdf"></i> Exportar Informe PDF
+                </button>
+            </div>
+        </div>
+
+        <!-- TAB CONTENT 1: ANALYTICS / GRAPHICS -->
+        <div id="view-analytics" class="space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                
+                <!-- Chart 1: HH por Vehículo -->
+                <div class="glass-card rounded-2xl p-5">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-chart-column text-blue-400"></i>
+                            Horas-Hombre Invertidas por Vehículo
+                        </h3>
+                        <span class="text-[11px] text-slate-400">Horas totales en el mes</span>
+                    </div>
+                    <div class="h-64 relative">
+                        <canvas id="chartVehicleHH"></canvas>
+                    </div>
+                </div>
+
+                <!-- Chart 2: Distribución por Tipo de Actividad -->
+                <div class="glass-card rounded-2xl p-5">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-chart-pie text-indigo-400"></i>
+                            Distribución de Trabajo por Actividad
+                        </h3>
+                        <span class="text-[11px] text-slate-400">% de HH dedicadas</span>
+                    </div>
+                    <div class="h-64 relative flex items-center justify-center">
+                        <canvas id="chartActivityDistribution"></canvas>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Chart 3: Evolución Diaria de Horas -->
+            <div class="glass-card rounded-2xl p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-chart-line text-emerald-400"></i>
+                        Evolución Temporal de Horas-Hombre en el Mes
+                    </h3>
+                    <span class="text-[11px] text-slate-400">Seguimiento día a día</span>
+                </div>
+                <div class="h-64 relative">
+                    <canvas id="chartTimelineHH"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB CONTENT 2: REGISTRO HISTORIAL -->
+        <div id="view-logs" class="hidden space-y-4">
+            <div class="glass-card rounded-2xl p-5">
+                <div class="flex flex-col sm:flex-row items-center justify-between gap-3 mb-4">
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-receipt text-blue-400"></i>
+                        Detalle de Registros de Horas-Hombre
+                    </h3>
+                    
+                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                        <div class="relative w-full sm:w-64">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-500 text-xs"></i>
+                            <input type="text" id="logSearchInput" onkeyup="app.filterLogsTable()" placeholder="Buscar por patente, cliente..." class="w-full bg-slate-900 border border-slate-700 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs text-slate-300">
+                        <thead class="bg-slate-900/80 text-slate-400 uppercase font-semibold text-[10px] border-b border-slate-800">
+                            <tr>
+                                <th class="py-3 px-4">Fecha</th>
+                                <th class="py-3 px-4">Vehículo</th>
+                                <th class="py-3 px-4">Cliente / Proy.</th>
+                                <th class="py-3 px-4">Actividad</th>
+                                <th class="py-3 px-4">Descripción</th>
+                                <th class="py-3 px-4 text-right">Duración (HH)</th>
+                                <th class="py-3 px-4 text-center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logsTableBody" class="divide-y divide-slate-800/60">
+                            <!-- Inyectado dinámicamente -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB CONTENT 3: FLOTA VEHICULAR -->
+        <div id="view-vehicles" class="hidden space-y-4">
+            <div class="glass-card rounded-2xl p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-car text-indigo-400"></i>
+                        Inventario de Vehículos y Equipos
+                    </h3>
+                    <button onclick="app.openVehicleModal()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-plus text-xs"></i> Agregar Vehículo
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="vehiclesGrid">
+                    <!-- Inyectado dinámicamente -->
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-900 bg-slate-950 py-4 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2">
+            <p>Control de Horas-Hombre y Registro Vehicular &copy; 2026 - Listo para Vercel</p>
+            <p class="text-[11px] text-slate-600">Precisión en segundos HH:MM:SS | Sistema de almacenamiento local persistente</p>
+        </div>
+    </footer>
+
+    <!-- MODAL 1: Crear/Editar Vehículo -->
+    <div id="vehicleModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <button onclick="app.closeVehicleModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white text-sm">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <h3 id="vehicleModalTitle" class="text-base font-bold text-white mb-4 flex items-center gap-2">
+                <i class="fa-solid fa-car text-blue-400"></i> Registrar Nuevo Vehículo
+            </h3>
+            
+            <form id="vehicleForm" onsubmit="app.saveVehicle(event)" class="space-y-4">
+                <input type="hidden" id="vehId">
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Patente / Matrícula *</label>
+                    <input type="text" id="vehPatente" required placeholder="Ej: BB-CL-89 o AA123BB" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white uppercase focus:outline-none focus:border-blue-500">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Marca *</label>
+                        <input type="text" id="vehMarca" required placeholder="Ej: Toyota" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Modelo *</label>
+                        <input type="text" id="vehModelo" required placeholder="Ej: Hilux 4x4" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Cliente / Proyecto / Área</label>
+                    <input type="text" id="vehCliente" placeholder="Ej: Minera Escondida / Depto Operaciones" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500">
+                </div>
+
+                <div class="flex justify-end gap-2 mt-6">
+                    <button type="button" onclick="app.closeVehicleModal()" class="px-4 py-2 text-xs font-medium text-slate-400 hover:text-white">Cancelar</button>
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-4 py-2 rounded-xl transition">Guardar Vehículo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL 2: Registro Manual de Horas Hombre -->
+    <div id="manualEntryModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
+            <button onclick="app.closeManualEntryModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white text-sm">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <h3 class="text-base font-bold text-white mb-4 flex items-center gap-2">
+                <i class="fa-solid fa-pen-to-square text-emerald-400"></i> Ingreso Manual de Horas-Hombre
+            </h3>
+            
+            <form id="manualEntryForm" onsubmit="app.saveManualEntry(event)" class="space-y-4">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Vehículo *</label>
+                        <select id="manualVehicleSelect" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500">
+                            <!-- Inyectado -->
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Fecha de Trabajo *</label>
+                        <input type="date" id="manualDate" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Tipo de Actividad *</label>
+                    <select id="manualActivitySelect" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500">
+                        <option value="Mantenimiento Preventivo">Mantenimiento Preventivo</option>
+                        <option value="Reparación Mecánica">Reparación Mecánica</option>
+                        <option value="Diagnóstico Eléctrico">Diagnóstico Eléctrico</option>
+                        <option value="Servicio de Pintura/Desabolladura">Servicio de Pintura/Desabolladura</option>
+                        <option value="Inspección Técnica">Inspección Técnica</option>
+                        <option value="Lavado y Detalle">Lavado y Detalle</option>
+                        <option value="Otro">Otro Trabajo</option>
+                    </select>
+                </div>
+
+                <!-- Duración exacta HH:MM:SS o Horas Decimales -->
+                <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
+                    <span class="text-xs font-semibold text-slate-300 block">Tiempo de Trabajo Exacto</span>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <label class="block text-[10px] text-slate-400 mb-1">Horas</label>
+                            <input type="number" id="manualHours" min="0" max="99" value="1" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white text-center font-mono">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] text-slate-400 mb-1">Minutos</label>
+                            <input type="number" id="manualMinutes" min="0" max="59" value="30" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white text-center font-mono">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] text-slate-400 mb-1">Segundos</label>
+                            <input type="number" id="manualSeconds" min="0" max="59" value="0" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white text-center font-mono">
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Observaciones / Descripción del servicio</label>
+                    <textarea id="manualNotes" rows="2" placeholder="Detalle de repuestos cambiados, tareas desarrolladas..." class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"></textarea>
+                </div>
+
+                <div class="flex justify-end gap-2 mt-6">
+                    <button type="button" onclick="app.closeManualEntryModal()" class="px-4 py-2 text-xs font-medium text-slate-400 hover:text-white">Cancelar</button>
+                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-4 py-2 rounded-xl transition">Registrar HH</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- PLANTILLA OCULTA IMPRESIÓN/EXPORTACIÓN PDF -->
+    <div id="pdfReportTemplate" class="hidden bg-white text-slate-900 p-8 max-w-4xl mx-auto">
+        <!-- Header Informe -->
+        <div class="flex justify-between items-center border-b-2 border-slate-900 pb-4 mb-6">
+            <div>
+                <h1 class="text-2xl font-black uppercase text-slate-900 tracking-tight">Informe de Horas-Hombre Invertidas</h1>
+                <p class="text-sm text-slate-600 font-medium mt-1">Control de Flota y Servicios de Mantenimiento</p>
+            </div>
+            <div class="text-right">
+                <div class="text-xs font-bold text-slate-500 uppercase">Período Evaluado</div>
+                <div id="pdfReportPeriod" class="text-base font-bold text-blue-700">Octubre 2026</div>
+                <div class="text-[10px] text-slate-400 mt-1" id="pdfReportGenDate">Generado el: --</div>
+            </div>
+        </div>
+
+        <!-- KPIs Resumen en PDF -->
+        <div class="grid grid-cols-3 gap-4 mb-6">
+            <div class="bg-slate-100 p-4 rounded-lg border border-slate-300">
+                <div class="text-xs font-semibold text-slate-500 uppercase">Total HH Registradas</div>
+                <div id="pdfKpiTotalHH" class="text-xl font-bold text-slate-900 mt-1">00:00:00</div>
+            </div>
+            <div class="bg-slate-100 p-4 rounded-lg border border-slate-300">
+                <div class="text-xs font-semibold text-slate-500 uppercase">Vehículos Atendidos</div>
+                <div id="pdfKpiVehicles" class="text-xl font-bold text-slate-900 mt-1">0</div>
+            </div>
+            <div class="bg-slate-100 p-4 rounded-lg border border-slate-300">
+                <div class="text-xs font-semibold text-slate-500 uppercase">Total Sesiones/Servicios</div>
+                <div id="pdfKpiSessions" class="text-xl font-bold text-slate-900 mt-1">0</div>
+            </div>
+        </div>
+
+        <!-- Tabla Resumen por Vehículo -->
+        <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wider mb-2 border-b border-slate-300 pb-1">Desglose por Vehículo</h2>
+        <table class="w-full text-left text-xs mb-6 border-collapse">
+            <thead>
+                <tr class="bg-slate-800 text-white">
+                    <th class="p-2">Patente</th>
+                    <th class="p-2">Vehículo</th>
+                    <th class="p-2">Cliente / Proyecto</th>
+                    <th class="p-2 text-right">Horas HH (HH:MM:SS)</th>
+                    <th class="p-2 text-right">Horas Decimales</th>
+                </tr>
+            </thead>
+            <tbody id="pdfVehicleTableBody">
+                <!-- Inyectado -->
+            </tbody>
+        </table>
+
+        <!-- Detalle Completo de Trabajos -->
+        <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wider mb-2 border-b border-slate-300 pb-1">Registro Detallado de Trabajos</h2>
+        <table class="w-full text-left text-[11px] border-collapse">
+            <thead>
+                <tr class="bg-slate-200 text-slate-800">
+                    <th class="p-2 border-b">Fecha</th>
+                    <th class="p-2 border-b">Vehículo</th>
+                    <th class="p-2 border-b">Actividad</th>
+                    <th class="p-2 border-b">Descripción</th>
+                    <th class="p-2 border-b text-right">Duración</th>
+                </tr>
+            </thead>
+            <tbody id="pdfLogsTableBody">
+                <!-- Inyectado -->
+            </tbody>
+        </table>
+
+        <!-- Firma corporativa -->
+        <div class="mt-12 pt-8 border-t border-slate-300 flex justify-between text-xs text-slate-500">
+            <div>
+                <p class="font-bold text-slate-800">Aprobado por Jefe de Operaciones</p>
+                <p>Firma y Timbre</p>
+            </div>
+            <div class="text-right">
+                <p>AutoTracker HH System</p>
+                <p>Documento de Control Interno</p>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- JAVASCRIPT LÓGICA PRINCIPAL -->
+    <script>
+        /**
+         * APLICACIÓN PRINCIPAL DE CONTROL DE VEHÍCULOS Y HORAS HOMBRE
+         */
+        class AutoTrackerApp {
+            constructor() {
+                // Estado del sistema
+                this.vehicles = JSON.parse(localStorage.getItem('autotracker_vehicles')) || [];
+                this.logs = JSON.parse(localStorage.getItem('autotracker_logs')) || [];
+                this.selectedMonth = new Date().toISOString().substring(0, 7); // Format YYYY-MM
+                
+                // Temporizador en vivo state
+                this.timerState = JSON.parse(localStorage.getItem('autotracker_timer_state')) || {
+                    running: false,
+                    paused: false,
+                    startTime: null,
+                    accumulatedSeconds: 0,
+                    vehicleId: '',
+                    activity: 'Mantenimiento Preventivo',
+                    notes: ''
+                };
+
+                this.timerInterval = null;
+                this.charts = {};
+
+                // Inicializar mock dataset si está vacío
+                if (this.vehicles.length === 0 && this.logs.length === 0) {
+                    this.seedMockData();
+                }
+            }
+
+            init() {
+                // Set default month filter input
+                document.getElementById('monthFilter').value = this.selectedMonth;
+
+                // Render selects and UI elements
+                this.populateVehicleSelects();
+                this.renderVehiclesList();
+                this.renderLogsTable();
+                this.updateDashboardKPIs();
+                this.initCharts();
+                
+                // Restablecer cronómetro si estaba activo previamente
+                if (this.timerState.running || this.timerState.accumulatedSeconds > 0) {
+                    this.restoreTimerState();
+                }
+
+                // Iniciar watcher del temporizador (1 seg precision)
+                setInterval(() => this.tickTimer(), 1000);
+            }
+
+            // Datos Iniciales Demo
+            seedMockData() {
+                const now = new Date();
+                const currMonth = now.toISOString().substring(0, 7);
+
+                this.vehicles = [
+                    { id: 'v1', patente: 'KPRX-42', marca: 'Toyota', modelo: 'Hilux 4x4', cliente: 'Servicios Mineros' },
+                    { id: 'v2', patente: 'LPTW-88', marca: 'Caterpillar', modelo: 'Excavadora 320', cliente: 'Obra Vial Central' },
+                    { id: 'v3', patente: 'GHJC-15', marca: 'Volvo', modelo: 'Camión FH16', cliente: 'Transportes Norte' }
+                ];
+
+                this.logs = [
+                    {
+                        id: 'l1',
+                        vehicleId: 'v1',
+                        date: `${currMonth}-02`,
+                        durationSeconds: 12600, // 3h 30m
+                        activity: 'Mantenimiento Preventivo',
+                        notes: 'Cambio de aceite, filtro y revisión general de frenos.'
+                    },
+                    {
+                        id: 'l2',
+                        vehicleId: 'v2',
+                        date: `${currMonth}-05`,
+                        durationSeconds: 18000, // 5h
+                        activity: 'Reparación Mecánica',
+                        notes: 'Reparación de manguera hidráulica y fugas en brazo.'
+                    },
+                    {
+                        id: 'l3',
+                        vehicleId: 'v1',
+                        date: `${currMonth}-10`,
+                        durationSeconds: 5400, // 1h 30m
+                        activity: 'Diagnóstico Eléctrico',
+                        notes: 'Escáner electrónico y reemplazo de batería.'
+                    },
+                    {
+                        id: 'l4',
+                        vehicleId: 'v3',
+                        date: `${currMonth}-12`,
+                        durationSeconds: 27000, // 7h 30m
+                        activity: 'Servicio de Pintura/Desabolladura',
+                        notes: 'Pintura de cabina y alineación de parachoques.'
+                    }
+                ];
+
+                this.saveData();
+            }
+
+            saveData() {
+                localStorage.setItem('autotracker_vehicles', JSON.stringify(this.vehicles));
+                localStorage.setItem('autotracker_logs', JSON.stringify(this.logs));
+                localStorage.setItem('autotracker_timer_state', JSON.stringify(this.timerState));
+            }
+
+            // --- CRONÓMETRO EN TIEMPO REAL ---
+            startTimer() {
+                const vehicleId = document.getElementById('timerVehicleSelect').value;
+                const activity = document.getElementById('timerActivitySelect').value;
+                const notes = document.getElementById('timerNotesInput').value;
+
+                if (!vehicleId) {
+                    this.showToast('Por favor selecciona un vehículo para iniciar el cronómetro', 'warning');
+                    return;
+                }
+
+                if (!this.timerState.running) {
+                    this.timerState.running = true;
+                    this.timerState.paused = false;
+                    this.timerState.startTime = Date.now();
+                    this.timerState.vehicleId = vehicleId;
+                    this.timerState.activity = activity;
+                    this.timerState.notes = notes;
+                    this.saveData();
+                }
+
+                this.updateTimerUI();
+                this.showToast('Cronómetro iniciado correctamente', 'success');
+            }
+
+            pauseTimer() {
+                if (this.timerState.running && !this.timerState.paused) {
+                    const elapsed = Math.floor((Date.now() - this.timerState.startTime) / 1000);
+                    this.timerState.accumulatedSeconds += elapsed;
+                    this.timerState.running = false;
+                    this.timerState.paused = true;
+                    this.saveData();
+                    this.updateTimerUI();
+                    this.showToast('Cronómetro pausado', 'info');
+                } else if (this.timerState.paused) {
+                    // Reanudar
+                    this.timerState.running = true;
+                    this.timerState.paused = false;
+                    this.timerState.startTime = Date.now();
+                    this.saveData();
+                    this.updateTimerUI();
+                    this.showToast('Cronómetro reanudado', 'info');
+                }
+            }
+
+            stopTimer() {
+                if (!this.timerState.running && this.timerState.accumulatedSeconds === 0) return;
+
+                let totalSecs = this.timerState.accumulatedSeconds;
+                if (this.timerState.running) {
+                    totalSecs += Math.floor((Date.now() - this.timerState.startTime) / 1000);
+                }
+
+                if (totalSecs < 10) {
+                    this.showToast('El registro de tiempo es demasiado corto (mínimo 10 seg).', 'warning');
+                    this.resetTimer();
+                    return;
+                }
+
+                // Guardar registro de HH
+                const today = new Date().toISOString().substring(0, 10);
+                const newLog = {
+                    id: 'l_' + Date.now(),
+                    vehicleId: this.timerState.vehicleId,
+                    date: today,
+                    durationSeconds: totalSecs,
+                    activity: this.timerState.activity,
+                    notes: this.timerState.notes || 'Registro automático vía cronómetro.'
+                };
+
+                this.logs.unshift(newLog);
+                this.resetTimer();
+                this.saveData();
+
+                // Actualizar Vistas
+                this.refreshAll();
+                this.showToast('¡Sesión de Trabajo finalizada y guardada con éxito!', 'success');
+            }
+
+            resetTimer() {
+                this.timerState = {
+                    running: false,
+                    paused: false,
+                    startTime: null,
+                    accumulatedSeconds: 0,
+                    vehicleId: '',
+                    activity: 'Mantenimiento Preventivo',
+                    notes: ''
+                };
+                this.saveData();
+                this.updateTimerUI();
+            }
+
+            restoreTimerState() {
+                document.getElementById('timerVehicleSelect').value = this.timerState.vehicleId;
+                document.getElementById('timerActivitySelect').value = this.timerState.activity;
+                document.getElementById('timerNotesInput').value = this.timerState.notes;
+                this.updateTimerUI();
+            }
+
+            tickTimer() {
+                if (this.timerState.running) {
+                    this.updateTimerUI();
+                }
+            }
+
+            getCurrentTimerSeconds() {
+                let current = this.timerState.accumulatedSeconds;
+                if (this.timerState.running && this.timerState.startTime) {
+                    current += Math.floor((Date.now() - this.timerState.startTime) / 1000);
+                }
+                return current;
+            }
+
+            updateTimerUI() {
+                const totalSecs = this.getCurrentTimerSeconds();
+                document.getElementById('timerDisplay').innerText = this.formatHHMMSS(totalSecs);
+
+                const btnStart = document.getElementById('btnStartTimer');
+                const btnPause = document.getElementById('btnPauseTimer');
+                const btnStop = document.getElementById('btnStopTimer');
+                const pulse = document.getElementById('timerPulse');
+                const dot = document.getElementById('timerDot');
+                const badge = document.getElementById('timerStatusBadge');
+                const subtext = document.getElementById('timerSubtext');
+
+                const vehicle = this.vehicles.find(v => v.id === this.timerState.vehicleId);
+                const vehName = vehicle ? `${vehicle.patente} (${vehicle.marca})` : '';
+
+                if (this.timerState.running) {
+                    btnStart.classList.add('hidden');
+                    btnPause.classList.remove('hidden');
+                    btnPause.innerHTML = '<i class="fa-solid fa-pause"></i> Pausar';
+                    btnStop.classList.remove('hidden');
+                    
+                    pulse.classList.remove('hidden');
+                    dot.className = 'relative inline-flex rounded-full h-3 w-3 bg-emerald-500';
+                    badge.className = 'text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800';
+                    badge.innerText = 'EN CURSO';
+                    subtext.innerText = `Trabajando en ${vehName} - ${this.timerState.activity}`;
+                } else if (this.timerState.paused) {
+                    btnStart.classList.add('hidden');
+                    btnPause.classList.remove('hidden');
+                    btnPause.innerHTML = '<i class="fa-solid fa-play"></i> Reanudar';
+                    btnStop.classList.remove('hidden');
+
+                    pulse.classList.add('hidden');
+                    dot.className = 'relative inline-flex rounded-full h-3 w-3 bg-amber-500';
+                    badge.className = 'text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-950 text-amber-400 border border-amber-800';
+                    badge.innerText = 'PAUSADO';
+                    subtext.innerText = `Pausado: ${vehName}`;
+                } else {
+                    btnStart.classList.remove('hidden');
+                    btnPause.classList.add('hidden');
+                    btnStop.classList.add('hidden');
+
+                    pulse.classList.add('hidden');
+                    dot.className = 'relative inline-flex rounded-full h-3 w-3 bg-slate-500';
+                    badge.className = 'text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700';
+                    badge.innerText = 'INACTIVO';
+                    subtext.innerText = 'Sin actividad en curso';
+                }
+            }
+
+            // --- FILTROS Y NAVEGACIÓN ---
+            setMonthFilter(monthStr) {
+                this.selectedMonth = monthStr;
+                this.refreshAll();
+            }
+
+            switchTab(tabName) {
+                const tabs = ['analytics', 'logs', 'vehicles'];
+                tabs.forEach(t => {
+                    const el = document.getElementById(`view-${t}`);
+                    const btn = document.getElementById(`tab-${t}`);
+                    if (t === tabName) {
+                        el.classList.remove('hidden');
+                        btn.className = 'px-4 py-2 text-xs font-semibold rounded-xl bg-blue-600 text-white transition shadow-md shadow-blue-900/30';
+                    } else {
+                        el.classList.add('hidden');
+                        btn.className = 'px-4 py-2 text-xs font-semibold rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition';
+                    }
+                });
+
+                if (tabName === 'analytics') {
+                    this.updateCharts();
+                }
+            }
+
+            getFilteredLogs() {
+                return this.logs.filter(l => l.date && l.date.startsWith(this.selectedMonth));
+            }
+
+            // --- VEHÍCULOS CRUD ---
+            populateVehicleSelects() {
+                const timerSel = document.getElementById('timerVehicleSelect');
+                const manualSel = document.getElementById('manualVehicleSelect');
+
+                let html = '<option value="">-- Seleccionar Vehículo --</option>';
+                this.vehicles.forEach(v => {
+                    html += `<option value="${v.id}">${v.patente} - ${v.marca} ${v.modelo} (${v.cliente || 'Sin Cliente'})</option>`;
+                });
+
+                timerSel.innerHTML = html;
+                manualSel.innerHTML = html;
+
+                if (this.timerState.vehicleId) {
+                    timerSel.value = this.timerState.vehicleId;
+                }
+            }
+
+            openVehicleModal(id = null) {
+                document.getElementById('vehicleForm').reset();
+                document.getElementById('vehId').value = '';
+                document.getElementById('vehicleModalTitle').innerText = 'Registrar Nuevo Vehículo';
+
+                if (id) {
+                    const v = this.vehicles.find(item => item.id === id);
+                    if (v) {
+                        document.getElementById('vehId').value = v.id;
+                        document.getElementById('vehPatente').value = v.patente;
+                        document.getElementById('vehMarca').value = v.marca;
+                        document.getElementById('vehModelo').value = v.modelo;
+                        document.getElementById('vehCliente').value = v.cliente || '';
+                        document.getElementById('vehicleModalTitle').innerText = 'Editar Vehículo';
+                    }
+                }
+
+                document.getElementById('vehicleModal').classList.remove('hidden');
+            }
+
+            closeVehicleModal() {
+                document.getElementById('vehicleModal').classList.add('hidden');
+            }
+
+            saveVehicle(e) {
+                e.preventDefault();
+                const id = document.getElementById('vehId').value;
+                const patente = document.getElementById('vehPatente').value.toUpperCase().trim();
+                const marca = document.getElementById('vehMarca').value.trim();
+                const modelo = document.getElementById('vehModelo').value.trim();
+                const cliente = document.getElementById('vehCliente').value.trim();
+
+                if (id) {
+                    // Actualizar
+                    const index = this.vehicles.findIndex(v => v.id === id);
+                    if (index !== -1) {
+                        this.vehicles[index] = { id, patente, marca, modelo, cliente };
+                    }
+                } else {
+                    // Crear
+                    const newVeh = {
+                        id: 'v_' + Date.now(),
+                        patente,
+                        marca,
+                        modelo,
+                        cliente
+                    };
+                    this.vehicles.push(newVeh);
+                }
+
+                this.saveData();
+                this.populateVehicleSelects();
+                this.renderVehiclesList();
+                this.updateDashboardKPIs();
+                this.closeVehicleModal();
+                this.showToast('Vehículo guardado exitosamente', 'success');
+            }
+
+            deleteVehicle(id) {
+                if (confirm('¿Estás seguro de eliminar este vehículo? Se conservarán sus registros de horas.')) {
+                    this.vehicles = this.vehicles.filter(v => v.id !== id);
+                    this.saveData();
+                    this.populateVehicleSelects();
+                    this.renderVehiclesList();
+                    this.refreshAll();
+                    this.showToast('Vehículo eliminado', 'info');
+                }
+            }
+
+            renderVehiclesList() {
+                const grid = document.getElementById('vehiclesGrid');
+                if (this.vehicles.length === 0) {
+                    grid.innerHTML = '<div class="col-span-full text-center py-8 text-slate-500 text-xs">No hay vehículos registrados en la flota.</div>';
+                    return;
+                }
+
+                grid.innerHTML = this.vehicles.map(v => {
+                    // Contar total HH de este vehículo en el mes seleccionado
+                    const vehLogs = this.getFilteredLogs().filter(l => l.vehicleId === v.id);
+                    const totalSecs = vehLogs.reduce((acc, curr) => acc + curr.durationSeconds, 0);
+
+                    return `
+                        <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-4 flex flex-col justify-between hover:border-slate-700 transition">
+                            <div>
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-sm font-black text-white font-mono bg-blue-950 text-blue-400 px-2 py-0.5 rounded border border-blue-800/50">${v.patente}</span>
+                                    <div class="flex items-center gap-1">
+                                        <button onclick="app.openVehicleModal('${v.id}')" class="p-1 text-slate-400 hover:text-blue-400 transition" title="Editar">
+                                            <i class="fa-solid fa-pen"></i>
+                                        </button>
+                                        <button onclick="app.deleteVehicle('${v.id}')" class="p-1 text-slate-400 hover:text-rose-400 transition" title="Eliminar">
+                                            <i class="fa-solid fa-trash-can"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <h4 class="text-xs font-bold text-slate-200">${v.marca} ${v.modelo}</h4>
+                                <p class="text-[11px] text-slate-400 mt-1"><i class="fa-solid fa-building text-slate-600 mr-1"></i>${v.cliente || 'Sin Cliente Asignado'}</p>
+                            </div>
+
+                            <div class="mt-4 pt-3 border-t border-slate-800 flex justify-between items-center text-xs">
+                                <span class="text-slate-500">Acumulado Mes:</span>
+                                <span class="font-mono font-bold text-emerald-400">${this.formatHHMMSS(totalSecs)}</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            // --- REGISTRO MANUAL DE HH ---
+            openManualEntryModal() {
+                document.getElementById('manualEntryForm').reset();
+                document.getElementById('manualDate').value = new Date().toISOString().substring(0, 10);
+                document.getElementById('manualEntryModal').classList.remove('hidden');
+            }
+
+            closeManualEntryModal() {
+                document.getElementById('manualEntryModal').classList.add('hidden');
+            }
+
+            saveManualEntry(e) {
+                e.preventDefault();
+                const vehicleId = document.getElementById('manualVehicleSelect').value;
+                const date = document.getElementById('manualDate').value;
+                const activity = document.getElementById('manualActivitySelect').value;
+                const hours = parseInt(document.getElementById('manualHours').value) || 0;
+                const minutes = parseInt(document.getElementById('manualMinutes').value) || 0;
+                const seconds = parseInt(document.getElementById('manualSeconds').value) || 0;
+                const notes = document.getElementById('manualNotes').value;
+
+                if (!vehicleId) {
+                    this.showToast('Selecciona un vehículo válido', 'warning');
+                    return;
+                }
+
+                const totalSecs = (hours * 3600) + (minutes * 60) + seconds;
+
+                if (totalSecs <= 0) {
+                    this.showToast('La duración debe ser mayor a 0 segundos', 'warning');
+                    return;
+                }
+
+                const newLog = {
+                    id: 'l_' + Date.now(),
+                    vehicleId,
+                    date,
+                    durationSeconds: totalSecs,
+                    activity,
+                    notes
+                };
+
+                this.logs.unshift(newLog);
+                this.saveData();
+                this.closeManualEntryModal();
+                this.refreshAll();
+                this.showToast('Registro de HH guardado manualmente', 'success');
+            }
+
+            deleteLog(id) {
+                if (confirm('¿Deseas eliminar este registro de horas-hombre?')) {
+                    this.logs = this.logs.filter(l => l.id !== id);
+                    this.saveData();
+                    this.refreshAll();
+                    this.showToast('Registro eliminado', 'info');
+                }
+            }
+
+            // --- RENDER TABLAS E HISTORIAL ---
+            renderLogsTable() {
+                const tbody = document.getElementById('logsTableBody');
+                const filtered = this.getFilteredLogs();
+
+                if (filtered.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-slate-500">No hay registros de horas-hombre para el mes de ${this.selectedMonth}.</td></tr>`;
+                    return;
+                }
+
+                tbody.innerHTML = filtered.map(log => {
+                    const veh = this.vehicles.find(v => v.id === log.vehicleId) || { patente: 'N/A', marca: 'Desconocido', modelo: '', cliente: 'N/A' };
+                    return `
+                        <tr class="hover:bg-slate-800/40 transition">
+                            <td class="py-3 px-4 font-mono text-slate-400">${log.date}</td>
+                            <td class="py-3 px-4">
+                                <span class="font-bold text-white font-mono bg-slate-800 px-1.5 py-0.5 rounded text-[11px] border border-slate-700">${veh.patente}</span>
+                                <span class="text-slate-400 text-[11px] ml-1">${veh.marca} ${veh.modelo}</span>
+                            </td>
+                            <td class="py-3 px-4 text-slate-400">${veh.cliente || 'N/A'}</td>
+                            <td class="py-3 px-4">
+                                <span class="px-2 py-0.5 text-[10px] rounded-full font-medium bg-blue-950 text-blue-400 border border-blue-800/60">${log.activity}</span>
+                            </td>
+                            <td class="py-3 px-4 text-slate-400 max-w-xs truncate" title="${log.notes || ''}">${log.notes || '-'}</td>
+                            <td class="py-3 px-4 text-right font-mono font-bold text-emerald-400">${this.formatHHMMSS(log.durationSeconds)}</td>
+                            <td class="py-3 px-4 text-center">
+                                <button onclick="app.deleteLog('${log.id}')" class="text-slate-500 hover:text-rose-400 p-1 transition" title="Eliminar Registro">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            filterLogsTable() {
+                const query = document.getElementById('logSearchInput').value.toLowerCase();
+                const rows = document.querySelectorAll('#logsTableBody tr');
+
+                rows.forEach(row => {
+                    const text = row.innerText.toLowerCase();
+                    row.style.display = text.includes(query) ? '' : 'none';
+                });
+            }
+
+            // --- DASHBOARD KPIS ---
+            updateDashboardKPIs() {
+                const currentLogs = this.getFilteredLogs();
+                const totalSecs = currentLogs.reduce((acc, curr) => acc + curr.durationSeconds, 0);
+                const totalHoursDecimal = (totalSecs / 3600).toFixed(2);
+
+                // Unique vehicles served
+                const uniqueVehicles = new Set(currentLogs.map(l => l.vehicleId)).size;
+
+                // Avg HH per vehicle
+                const avgSecs = uniqueVehicles > 0 ? totalSecs / uniqueVehicles : 0;
+
+                document.getElementById('kpiTotalHH').innerText = this.formatHHMMSS(totalSecs);
+                document.getElementById('kpiTotalHoursDecimal').innerText = `${totalHoursDecimal} hrs decimales`;
+                document.getElementById('kpiVehiclesCount').innerText = this.vehicles.length;
+                document.getElementById('kpiEntriesCount').innerText = currentLogs.length;
+                document.getElementById('kpiAvgHH').innerText = this.formatHHMMSS(Math.round(avgSecs));
+            }
+
+            // --- GRÁFICOS INTERACTIVOS (CHART.JS) ---
+            initCharts() {
+                const ctx1 = document.getElementById('chartVehicleHH').getContext('2d');
+                const ctx2 = document.getElementById('chartActivityDistribution').getContext('2d');
+                const ctx3 = document.getElementById('chartTimelineHH').getContext('2d');
+
+                // Configuración Global Chart.js Modo Oscuro
+                Chart.defaults.color = '#94a3b8';
+                Chart.defaults.font.family = 'ui-sans-serif, system-ui, sans-serif';
+
+                // Chart 1: Bar Chart HH por Vehículo
+                this.charts.vehicleHH = new Chart(ctx1, {
+                    type: 'bar',
+                    data: { labels: [], datasets: [] },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, title: { display: true, text: 'Horas (HH)' } },
+                            x: { grid: { display: false } }
+                        }
+                    }
+                });
+
+                // Chart 2: Doughnut Actividades
+                this.charts.activityDist = new Chart(ctx2, {
+                    type: 'doughnut',
+                    data: { labels: [], datasets: [] },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } }
+                    }
+                });
+
+                // Chart 3: Line Chart Evolución Diaria
+                this.charts.timelineHH = new Chart(ctx3, {
+                    type: 'line',
+                    data: { labels: [], datasets: [] },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, title: { display: true, text: 'Horas' } },
+                            x: { grid: { color: 'rgba(255, 255, 255, 0.05)' } }
+                        }
+                    }
+                });
+
+                this.updateCharts();
+            }
+
+            updateCharts() {
+                const filtered = this.getFilteredLogs();
+
+                // 1. Data Chart Vehículos
+                const vehMap = {};
+                filtered.forEach(log => {
+                    const veh = this.vehicles.find(v => v.id === log.vehicleId);
+                    const label = veh ? `${veh.patente} (${veh.marca})` : 'Desconocido';
+                    vehMap[label] = (vehMap[label] || 0) + (log.durationSeconds / 3600);
+                });
+
+                this.charts.vehicleHH.data = {
+                    labels: Object.keys(vehMap),
+                    datasets: [{
+                        label: 'Horas Trabajadas',
+                        data: Object.values(vehMap).map(v => v.toFixed(2)),
+                        backgroundColor: '#3b82f6',
+                        borderRadius: 6
+                    }]
+                };
+                this.charts.vehicleHH.update();
+
+                // 2. Data Chart Actividades
+                const actMap = {};
+                filtered.forEach(log => {
+                    actMap[log.activity] = (actMap[log.activity] || 0) + (log.durationSeconds / 3600);
+                });
+
+                this.charts.activityDist.data = {
+                    labels: Object.keys(actMap),
+                    datasets: [{
+                        data: Object.values(actMap).map(v => v.toFixed(2)),
+                        backgroundColor: ['#3b82f6', '#6366f1', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#64748b']
+                    }]
+                };
+                this.charts.activityDist.update();
+
+                // 3. Data Chart Línea Temporal Día a Día
+                const dayMap = {};
+                filtered.forEach(log => {
+                    const day = log.date;
+                    dayMap[day] = (dayMap[day] || 0) + (log.durationSeconds / 3600);
+                });
+
+                // Ordenar por fecha
+                const sortedDays = Object.keys(dayMap).sort();
+
+                this.charts.timelineHH.data = {
+                    labels: sortedDays,
+                    datasets: [{
+                        label: 'HH Acumuladas el Día',
+                        data: sortedDays.map(d => dayMap[d].toFixed(2)),
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                };
+                this.charts.timelineHH.update();
+            }
+
+            // --- INFORME EXECUTIVO PDF ---
+            generatePDFReport() {
+                const filtered = this.getFilteredLogs();
+                if (filtered.length === 0) {
+                    this.showToast('No existen registros en el mes seleccionado para generar el PDF', 'warning');
+                    return;
+                }
+
+                this.showToast('Preparando y generando reporte PDF...', 'info');
+
+                // Llenar datos en la plantilla de exportación
+                document.getElementById('pdfReportPeriod').innerText = this.selectedMonth;
+                document.getElementById('pdfReportGenDate').innerText = `Generado el: ${new Date().toLocaleDateString('es-CL')} a las ${new Date().toLocaleTimeString('es-CL')}`;
+
+                const totalSecs = filtered.reduce((acc, curr) => acc + curr.durationSeconds, 0);
+                document.getElementById('pdfKpiTotalHH').innerText = this.formatHHMMSS(totalSecs);
+                
+                const uniqueVehicles = new Set(filtered.map(l => l.vehicleId)).size;
+                document.getElementById('pdfKpiVehicles').innerText = uniqueVehicles;
+                document.getElementById('pdfKpiSessions').innerText = filtered.length;
+
+                // Llenar desglose por vehículos en PDF
+                const pdfVehBody = document.getElementById('pdfVehicleTableBody');
+                const vehMap = {};
+                filtered.forEach(log => {
+                    if (!vehMap[log.vehicleId]) vehMap[log.vehicleId] = 0;
+                    vehMap[log.vehicleId] += log.durationSeconds;
+                });
+
+                pdfVehBody.innerHTML = Object.keys(vehMap).map(vehId => {
+                    const veh = this.vehicles.find(v => v.id === vehId) || { patente: 'N/A', marca: 'N/A', modelo: '', cliente: 'N/A' };
+                    const secs = vehMap[vehId];
+                    return `
+                        <tr class="border-b border-slate-200">
+                            <td class="p-2 font-bold">${veh.patente}</td>
+                            <td class="p-2">${veh.marca} ${veh.modelo}</td>
+                            <td class="p-2">${veh.cliente || 'N/A'}</td>
+                            <td class="p-2 text-right font-mono font-bold">${this.formatHHMMSS(secs)}</td>
+                            <td class="p-2 text-right font-mono">${(secs / 3600).toFixed(2)} hrs</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                // Llenar tabla detallada en PDF
+                const pdfLogsBody = document.getElementById('pdfLogsTableBody');
+                pdfLogsBody.innerHTML = filtered.map(log => {
+                    const veh = this.vehicles.find(v => v.id === log.vehicleId) || { patente: 'N/A' };
+                    return `
+                        <tr class="border-b border-slate-200">
+                            <td class="p-2 font-mono">${log.date}</td>
+                            <td class="p-2 font-bold">${veh.patente}</td>
+                            <td class="p-2">${log.activity}</td>
+                            <td class="p-2 text-slate-600">${log.notes || '-'}</td>
+                            <td class="p-2 text-right font-mono font-bold">${this.formatHHMMSS(log.durationSeconds)}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                // Renderizar a PDF con html2pdf
+                const element = document.getElementById('pdfReportTemplate');
+                element.classList.remove('hidden'); // Mostrar temporalmente para html2pdf
+
+                const opt = {
+                    margin:       [0.4, 0.4, 0.4, 0.4],
+                    filename:     `Informe_HH_Vehiculos_${this.selectedMonth}.pdf`,
+                    image:        { type: 'jpeg', quality: 0.98 },
+                    html2canvas:  { scale: 2, useCORS: true },
+                    jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+                };
+
+                html2pdf().set(opt).from(element).save().then(() => {
+                    element.classList.add('hidden'); // Ocultar nuevamente
+                    this.showToast('Descarga de PDF completada', 'success');
+                }).catch(err => {
+                    element.classList.add('hidden');
+                    console.error(err);
+                    this.showToast('Error al procesar el archivo PDF', 'error');
+                });
+            }
+
+            // --- REFRESH GENERAL DE LA VISTA ---
+            refreshAll() {
+                this.updateDashboardKPIs();
+                this.renderVehiclesList();
+                this.renderLogsTable();
+                this.updateCharts();
+            }
+
+            // --- UTILIDADES ---
+            formatHHMMSS(totalSeconds) {
+                const hours = Math.floor(totalSeconds / 3600);
+                const minutes = Math.floor((totalSeconds % 3600) / 60);
+                const seconds = Math.floor(totalSeconds % 60);
+
+                const pad = (num) => String(num).padStart(2, '0');
+                return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+            }
+
+            showToast(message, type = 'info') {
+                const container = document.getElementById('toast-container');
+                const toast = document.createElement('div');
+                
+                const bgColors = {
+                    success: 'bg-emerald-600 text-white',
+                    warning: 'bg-amber-600 text-white',
+                    error: 'bg-rose-600 text-white',
+                    info: 'bg-blue-600 text-white'
+                };
+
+                toast.className = `px-4 py-3 rounded-xl text-xs font-medium shadow-lg transition-all transform translate-y-2 opacity-0 flex items-center gap-2 pointer-events-auto ${bgColors[type] || bgColors.info}`;
+                toast.innerHTML = `<i class="fa-solid fa-circle-info"></i> <span>${message}</span>`;
+
+                container.appendChild(toast);
+
+                setTimeout(() => {
+                    toast.classList.remove('translate-y-2', 'opacity-0');
+                }, 10);
+
+                setTimeout(() => {
+                    toast.classList.add('opacity-0');
+                    setTimeout(() => toast.remove(), 300);
+                }, 3500);
+            }
+        }
+
+        // Inicializar la aplicación cuando se cargue el DOM
+        let app;
+        window.addEventListener('DOMContentLoaded', () => {
+            app = new AutoTrackerApp();
+            app.init();
+        });
+    </script>
+</body>
+</html>
